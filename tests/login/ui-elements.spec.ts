@@ -1,24 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/pages.fixture';
 
 test.describe('Login - UI Elements', () => {
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/sign-in');
+  test.beforeEach(async ({ loginPage }) => {
+    await loginPage.goto();
   });
 
   test('Page title is visible', async ({ page }) => {
-    await expect(page).toHaveTitle('Sign in — Ramp');
+    await expect(page).toHaveTitle(/Ramp Login Page/);
   });
 
-  test('Email field is visible and enabled', async ({ page }) => {
-    const emailField = page.locator('input[name="email"]');
-    await expect(emailField).toBeVisible();
-    await expect(emailField).toBeEnabled();
+  test('Email field is visible and enabled', async ({ loginPage }) => {
+    await expect(loginPage.emailInput).toBeVisible();
+    await expect(loginPage.emailInput).toBeEnabled();
   });
 
-  test('Login button is visible by default', async ({ page }) => {
-    const loginButton = page.locator('button[type="submit"]');
-    await expect(loginButton).toBeVisible();
+  test('Login button is visible by default', async ({ loginPage }) => {
+    await expect(loginPage.submitButton).toBeVisible();
   });
-
 });

@@ -1,33 +1,24 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/pages.fixture';
 
 test.describe('Sign Up - UI Elements', () => {
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/sign-up');
+  test.beforeEach(async ({ signUpPage }) => {
+    await signUpPage.goto();
   });
 
-  test('Page title and header are visible', async ({ page }) => {
-    await expect(page).toHaveTitle(/sign up/i);
-    const h2Element = page.getByRole('heading', { level: 2, name: 'Apply for Ramp' });
-    await expect(h2Element).toBeVisible();
+  test('Page title and header are visible', async ({ page, signUpPage }) => {
+    // The sign-up route keeps the generic site title, so the heading identifies the page.
+    await expect(page).toHaveTitle(/Ramp/);
+    await expect(signUpPage.heading).toBeVisible();
   });
 
-  test('All form fields are visible and enabled', async ({ page }) => {
-    const fields = [
-      'input[name="first_name"]',
-      'input[name="last_name"]',
-      'input[name="email"]',
-      'input[name="password"]'
-    ];
-    for (const field of fields) {
-      await expect(page.locator(field)).toBeVisible();
-      await expect(page.locator(field)).toBeEnabled();
+  test('All form fields are visible and enabled', async ({ signUpPage }) => {
+    for (const field of signUpPage.formFields) {
+      await expect(field).toBeVisible();
+      await expect(field).toBeEnabled();
     }
   });
 
-  test('Sign Up button is visible by default', async ({ page }) => {
-    const signupButton = page.locator('button[type="submit"]');
-    await expect(signupButton).toBeVisible();
+  test('Sign Up button is visible by default', async ({ signUpPage }) => {
+    await expect(signUpPage.submitButton).toBeVisible();
   });
-
 });

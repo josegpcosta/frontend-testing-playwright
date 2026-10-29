@@ -5,10 +5,13 @@
   "scripts": {
     "test": "npx playwright test",
     "test:ui": "npx playwright test --ui",
-    "test:headed": "npx playwright test --headed"
+    "test:headed": "npx playwright test --headed",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@playwright/test": "^1.45.0"
+    "@playwright/test": "^1.45.0",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
   }
 }

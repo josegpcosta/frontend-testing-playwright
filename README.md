@@ -1,123 +1,117 @@
 # frontend-testing-playwright
 
-Playwright E2E test suite that exercises the **Ramp** sign-in and sign-up flows (UI checks, functional E2E checks, and basic accessibility checks using `axe-core`).
+Playwright E2E test suite for the **Ramp** sign-in and sign-up flows: UI checks, functional E2E checks, boundary value analysis, and accessibility checks with `axe-core`.
 
 > **Note**
-> These tests run against `https://app.ramp.com` (configured in `playwright.config.ts`). You are testing a real, external environment.
+> By default these tests run against `https://app.ramp.com`, a real external environment. Override it with `BASE_URL`.
 
 ## Tech stack
 
-- [Playwright Test](https://playwright.dev/docs/test-intro) (test runner + browser automation)
+- [Playwright Test](https://playwright.dev/docs/test-intro)
 - TypeScript
-- [`@axe-core/playwright`](https://github.com/dequelabs/axe-core-npm/tree/develop/packages/playwright) for automated accessibility scanning
+- [`@axe-core/playwright`](https://github.com/dequelabs/axe-core-npm/tree/develop/packages/playwright)
 
 ## Project structure
 
 ```text
 .
-├─ playwright.config.ts         # Playwright configuration (baseURL, reporters, projects)
-├─ package.json                 # NPM scripts and dev dependencies
-├─ tests/
-│  ├─ fixtures/
-│  │  └─ test-data.ts           # Test data used by specs (valid/invalid users, etc.)
-│  ├─ utils/
-│  │  └─ accessibility-scan.ts  # Helper that runs axe-core scan and asserts no violations
-│  ├─ login/
-│  │  ├─ ui-elements.spec.ts    # Smoke/UI assertions for sign-in page
-│  │  ├─ e2e.spec.ts            # Login happy-path + negative scenarios
-│  │  └─ accessibility.spec.ts  # Keyboard/label checks + axe scan
-│  └─ signup/
-│     ├─ ui-elements.spec.ts    # Smoke/UI assertions for sign-up page
-│     ├─ e2e.spec.ts            # Sign-up happy-path + validations/boundary tests
-│     └─ accessibility.spec.ts  # Keyboard/label checks + axe scan
-└─ playwright-report/           # HTML report output (generated)
+├─ playwright.config.ts           # baseURL (env override), locale, reporter, projects
+├─ tsconfig.json                  # Used by `npm run typecheck`
+└─ tests/
+   ├─ pages/                      # Page Objects
+   │  ├─ BasePage.ts              # goto(), label/validation/focus helpers
+   │  ├─ LoginPage.ts             # /sign-in locators + two-step login actions
+   │  └─ SignUpPage.ts            # /sign-up locators + form actions
+   ├─ fixtures/
+   │  ├─ pages.fixture.ts         # test.extend: injects loginPage / signUpPage
+   │  └─ test-data.ts             # Test data, boundaries, data builders
+   ├─ utils/
+   │  └─ accessibility-scan.ts    # Axe scan + assertion
+   ├─ login/                      # ui-elements / e2e / accessibility specs
+   └─ signup/                     # ui-elements / e2e / accessibility specs
 ```
 
-## Design patterns used
+## Design: Page Object Model with fixtures
 
-This repo intentionally keeps things small, but it already applies a few common test-automation patterns:
+Each page has a class that owns its locators and user actions. Specs never use raw selectors.
 
-### 1) AAA (Arrange / Act / Assert)
+```ts
+// LoginPage.ts
+async login({ email, password }: Credentials) {
+  await this.submitEmail(email);
+  await this.submitPassword(password);
+}
+```
 
-Most specs follow the structure:
+Page objects are injected through Playwright fixtures, so specs import `test` and `expect` from `fixtures/pages.fixture.ts` instead of `@playwright/test`:
 
-- **Arrange**: navigate to the page in `beforeEach` (e.g. `page.goto('/sign-in')`)
-- **Act**: interact with inputs/buttons (`fill`, `click`, keyboard actions)
-- **Assert**: verify expected UI text, titles, or errors using `expect(...)`
+```ts
+import { test, expect } from '../fixtures/pages.fixture';
 
-### 2) Small helper utilities ("test utils")
+test('Attempt login with unregistered email', async ({ loginPage }) => {
+  await loginPage.login(unregisteredUser);
+  await expect(loginPage.invalidCredentialsError).toBeVisible();
+});
+```
 
-`tests/utils/accessibility-scan.ts` is a focused helper that encapsulates the Axe scan + assertion. This keeps specs readable and avoids repeated setup.
+Conventions:
 
-### 3) Data fixtures
+- Page objects expose locators and actions. Assertions stay in the specs.
+- Navigation is explicit in `beforeEach` (`await loginPage.goto()`). `goto()` waits for a page-specific ready element, because the SPA renders after the load event. If the page never renders, the error names the URL and title instead of failing later on a random locator.
+- Test data lives in `test-data.ts`. Sign-up data is built with `validSignUpData()` and one field is overridden per scenario.
+- Boundary tests cover both sides of each limit: password 11/12 chars, first name 1/2 and 36/37 chars (rules confirmed against app.ramp.com).
+- Password length is an always-visible checklist item. Tests assert its state (met / not met), not its visibility.
+- Field validation is checked through `aria-invalid`, which the design system sets on submit. This does not depend on error copy.
+- When a validation assertion fails, its message includes the field's `aria-describedby` text, so the report shows the real rule.
+- First name boundary data uses name-like strings (`nameOfLength`), so other rules such as repeated characters do not mask the length rule.
+- The "(required)" text is a permanent label suffix, not an error, so tests do not use it.
+- Sign-up boundary tests submit with an invalid email on purpose. The email error proves validation ran, and no account is created.
+- The fully valid sign-up creates a real account, so it only runs with `E2E_ALLOW_SIGNUP=true`.
+- The keyboard test follows the DOM order of the fields and allows other focusable elements between them.
+- Sign-in error messages are scoped to `<main>`, because the same text is repeated in a screen-reader-only live region. That live region has its own accessibility test.
+- The axe scan runs WCAG 2.0/2.1 A and AA rules only (`WCAG_TAGS`). Best-practice rules are excluded.
 
-`tests/fixtures/test-data.ts` centralizes common test data (valid/invalid users). This reduces duplication and makes it easier to update scenarios in one place.
-
-> If the suite grows, the next natural step is to introduce the **Page Object Model (POM)** for the sign-in/sign-up pages and reuse those page objects across specs.
+To add a page: create a class in `tests/pages/` extending `BasePage`, set `path`, declare locators and actions, then register it in `pages.fixture.ts`.
 
 ## Setup
 
-### Prerequisites
-
-- Node.js (LTS recommended)
-- npm (bundled with Node)
-
-### Install dependencies
-
 ```bash
 npm ci
-```
-
-### Install Playwright browsers
-
-Playwright requires browser binaries:
-
-```bash
 npx playwright install
 ```
 
 ## Running the tests
 
-### Run all tests (headless)
-
 ```bash
-npm test
+npm test               # headless
+npm run test:ui        # UI mode
+npm run test:headed    # headed
+npm run typecheck      # TypeScript check, no browser needed
 ```
 
-### Run with Playwright UI mode
+### Environment variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `BASE_URL` | Target environment | `https://app.ramp.com` |
+| `E2E_USER_EMAIL` | Real account for the successful login test | unset (test is skipped) |
+| `E2E_USER_PASSWORD` | Password for that account | unset (test is skipped) |
+| `E2E_ALLOW_SIGNUP` | Runs the valid sign-up test (creates a real account) | unset (test is skipped) |
+| `WORKERS` | Parallel workers (kept low: the target is production) | `2` |
+| `CI` | 2 retries instead of 1 (retried tests show as flaky in the report) | unset |
 
 ```bash
-npm run test:ui
-```
-
-### Run in headed mode (see the browser)
-
-```bash
-npm run test:headed
+BASE_URL=https://staging.example.com E2E_USER_EMAIL=me@company.com E2E_USER_PASSWORD=*** npm test
 ```
 
 ## Reports
-
-This project uses the HTML reporter. After a run, open the report:
 
 ```bash
 npx playwright show-report
 ```
 
-The report is generated into the `playwright-report/` directory.
-
-## Configuration
-
-The base URL is configured in `playwright.config.ts`:
-
-- `use.baseURL`: `https://app.ramp.com`
-- `reporter`: HTML output to `playwright-report`
-- `projects`: currently runs on **Desktop Chrome**
-
-If you want to point at a different environment, update `use.baseURL` (and consider adding an environment variable override).
-
 ## Troubleshooting
 
-- **Tests fail due to UI changes**: selectors/text assertions may need updating.
-- **Accessibility scan fails**: `axe-core` violations will be printed to the console in `runAccessibilityScan`.
-- **Slow or flaky external site**: consider adding retries in `playwright.config.ts` or using tracing (`trace: 'on-first-retry'` is already enabled).
+- **Tests fail due to UI changes**: update the locator in the matching page object only.
+- **Accessibility scan fails**: the assertion message lists each violation id, impact and affected node count.
+- **Invalid email (login) fails on a non-English browser**: the native validation message is localized. The config forces `locale: 'en-US'`.
